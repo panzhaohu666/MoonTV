@@ -80,12 +80,20 @@ export async function GET(request: Request) {
     }
   }
 
+  // 豆瓣的「电视剧」索引里动画/纪录片很少（各只有 1-2 条），
+  // 改用「动漫」「纪录片」标签，结果更全
+  let genreParam = genre;
+  if (type === 'tv' && (genre === '动画' || genre === '纪录片')) {
+    tags = genre === '动画' ? '动漫' : '纪录片';
+    genreParam = '';
+  }
+
   let target = `https://movie.douban.com/j/new_search_subjects?sort=${sort}&range=0,10&tags=${encodeURIComponent(
     tags
   )}&start=${pageStart}&limit=${pageLimit}`;
 
-  if (genre && genre !== '全部') {
-    target += `&genres=${encodeURIComponent(genre)}`;
+  if (genreParam && genreParam !== '全部') {
+    target += `&genres=${encodeURIComponent(genreParam)}`;
   }
   if (region && region !== '全部') {
     target += `&countries=${encodeURIComponent(region)}`;
