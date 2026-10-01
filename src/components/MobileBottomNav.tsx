@@ -2,10 +2,22 @@
 
 'use client';
 
-import { Clover, Film, Home, Search, Star, Tv } from 'lucide-react';
+import {
+  Baby,
+  BookOpen,
+  Clapperboard,
+  Clover,
+  Film,
+  Home,
+  Sparkles,
+  Star,
+  Tv,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+
+import { normalizeChannelPath } from '@/lib/utils';
 
 interface MobileBottomNavProps {
   /**
@@ -22,7 +34,6 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
 
   const [navItems, setNavItems] = useState([
     { icon: Home, label: '首页', href: '/' },
-    { icon: Search, label: '搜索', href: '/search' },
     {
       icon: Film,
       label: '电影',
@@ -37,6 +48,26 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
       icon: Clover,
       label: '综艺',
       href: '/douban?type=show',
+    },
+    {
+      icon: Sparkles,
+      label: '动漫',
+      href: '/douban?genre=动画&type=tv',
+    },
+    {
+      icon: Baby,
+      label: '少儿',
+      href: '/douban?genre=少儿&type=tv',
+    },
+    {
+      icon: Clapperboard,
+      label: '纪录片',
+      href: '/douban?genre=纪录片&type=tv',
+    },
+    {
+      icon: BookOpen,
+      label: '知识',
+      href: '/douban?genre=知识&type=tv',
     },
   ]);
 
@@ -55,16 +86,9 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
   }, []);
 
   const isActive = (href: string) => {
-    const typeMatch = href.match(/type=([^&]+)/)?.[1];
-
-    // 解码URL以进行正确的比较
-    const decodedActive = decodeURIComponent(currentActive);
-    const decodedItemHref = decodeURIComponent(href);
-
     return (
-      decodedActive === decodedItemHref ||
-      (decodedActive.startsWith('/douban') &&
-        decodedActive.includes(`type=${typeMatch}`))
+      normalizeChannelPath(decodeURIComponent(currentActive)) ===
+      normalizeChannelPath(decodeURIComponent(href))
     );
   };
 

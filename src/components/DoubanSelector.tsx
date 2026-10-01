@@ -66,6 +66,20 @@ const genreOptions: SelectorOption[] = [
   ...GENRE_LABELS.map((genre) => ({ label: genre, value: genre })),
 ];
 
+// 剧集额外的“频道型”类型（对应豆瓣的专题标签）
+const TV_EXTRA_GENRES: SelectorOption[] = [
+  { label: '少儿', value: '少儿' },
+  { label: '知识', value: '知识' },
+];
+
+function getGenreOptions(type: 'movie' | 'tv' | 'show'): SelectorOption[] {
+  if (type !== 'tv') return genreOptions;
+  const index = genreOptions.findIndex((option) => option.value === '纪录片');
+  const merged = [...genreOptions];
+  merged.splice(index + 1, 0, ...TV_EXTRA_GENRES);
+  return merged;
+}
+
 // 地区
 const REGION_LABELS = [
   '欧美',
@@ -282,7 +296,7 @@ const DoubanSelector: React.FC<DoubanSelectorProps> = ({
       {/* 类型 */}
       <TagRow
         label='类型'
-        options={genreOptions}
+        options={getGenreOptions(type)}
         value={genreSelection || '全部'}
         onChange={onGenreChange}
       />

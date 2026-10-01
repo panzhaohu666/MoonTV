@@ -49,6 +49,21 @@ export function processImageUrl(originalUrl: string): string {
 }
 
 /**
+ * 归一化频道路径（仅保留 type/genre 参数），用于侧边栏/底栏的高亮匹配
+ */
+export function normalizeChannelPath(url: string): string {
+  const [path, query = ''] = url.split('?');
+  const params = new URLSearchParams(query);
+  const parts = ['genre', 'type']
+    .map((key) => {
+      const value = params.get(key);
+      return value ? `${key}=${value}` : '';
+    })
+    .filter(Boolean);
+  return parts.length ? `${path}?${parts.join('&')}` : path;
+}
+
+/**
  * 获取豆瓣代理 URL 设置
  */
 export function getDoubanProxyUrl(): string | null {

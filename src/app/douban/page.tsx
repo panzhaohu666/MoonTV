@@ -72,12 +72,17 @@ function DoubanPageClient() {
     setLoading(true); // 立即显示loading状态
   }, [type]);
 
-  // 当type变化时重置选择器状态
+  // 当type/URL参数变化时重置选择器状态（支持侧边栏直链，如 ?type=tv&genre=动画）
   useEffect(() => {
-    // 筛选行恢复默认
-    setGenreSelection('全部');
-    setRegionSelection('全部');
-    setEraSelection('全部');
+    const urlGenre = searchParams.get('genre') || '全部';
+    const urlRegion = searchParams.get('region') || '全部';
+    const urlEra = searchParams.get('era') || '全部';
+    const urlTab = searchParams.get('tab') || '';
+
+    // 筛选行恢复默认（或使用URL参数）
+    setGenreSelection(urlGenre);
+    setRegionSelection(urlRegion);
+    setEraSelection(urlEra);
 
     if (type === 'custom' && customCategories.length > 0) {
       // 自定义分类模式：优先选择 movie，如果没有 movie 则选择 tv
@@ -105,7 +110,7 @@ function DoubanPageClient() {
     } else {
       // 原有逻辑
       if (type === 'movie') {
-        setPrimarySelection('热门');
+        setPrimarySelection(urlTab || '热门');
         setSecondarySelection('全部');
       } else if (type === 'tv') {
         setPrimarySelection('');
@@ -125,7 +130,7 @@ function DoubanPageClient() {
     }, 50);
 
     return () => clearTimeout(timer);
-  }, [type, customCategories]);
+  }, [type, customCategories, searchParams]);
 
   // 生成骨架屏数据
   const skeletonData = Array.from({ length: 25 }, (_, index) => index);
@@ -398,12 +403,8 @@ function DoubanPageClient() {
   };
 
   const getActivePath = () => {
-    const params = new URLSearchParams();
-    if (type) params.set('type', type);
-
-    const queryString = params.toString();
-    const activePath = `/douban${queryString ? `?${queryString}` : ''}`;
-    return activePath;
+    const queryString = searchParams.toString();
+    return `/douban${queryString ? `?${queryString}` : ''}`;
   };
 
   return (

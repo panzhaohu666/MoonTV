@@ -140,10 +140,16 @@ export async function GET(request: Request) {
   }
 
   // 豆瓣的「电视剧」索引里动画/纪录片很少（各只有 1-2 条），
-  // 改用「动漫」「纪录片」标签，结果更全
+  // 少儿/知识也只在专题标签里有数据，统一改用对应标签
+  const tvSpecialTags: Record<string, string> = {
+    动画: '动漫',
+    纪录片: '纪录片',
+    少儿: '少儿',
+    知识: '知识',
+  };
   let genreParam = genre;
-  if (type === 'tv' && (genre === '动画' || genre === '纪录片')) {
-    tags = genre === '动画' ? '动漫' : '纪录片';
+  if (type === 'tv' && tvSpecialTags[genre]) {
+    tags = tvSpecialTags[genre];
     genreParam = '';
   }
 
