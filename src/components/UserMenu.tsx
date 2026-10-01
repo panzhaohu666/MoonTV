@@ -2,7 +2,15 @@
 
 'use client';
 
-import { KeyRound, LogOut, Settings, Shield, User, X } from 'lucide-react';
+import {
+  KeyRound,
+  LogOut,
+  Settings,
+  Shield,
+  Star,
+  User,
+  X,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -213,6 +221,11 @@ export const UserMenu: React.FC = () => {
     setIsSettingsOpen(true);
   };
 
+  const handleFavorites = () => {
+    setIsOpen(false);
+    router.push('/?tab=favorites');
+  };
+
   const handleCloseSettings = () => {
     setIsSettingsOpen(false);
   };
@@ -354,6 +367,15 @@ export const UserMenu: React.FC = () => {
 
         {/* 菜单项 */}
         <div className='py-1'>
+          {/* 收藏夹按钮 */}
+          <button
+            onClick={handleFavorites}
+            className='w-full px-3 py-2 text-left flex items-center gap-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm'
+          >
+            <Star className='w-4 h-4 text-gray-500 dark:text-gray-400' />
+            <span className='font-medium'>收藏夹</span>
+          </button>
+
           {/* 设置按钮 */}
           <button
             onClick={handleSettings}
