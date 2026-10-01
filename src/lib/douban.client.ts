@@ -163,6 +163,88 @@ export async function getDoubanCategories(
   }
 }
 
+export interface DoubanBrowseParams {
+  type: 'movie' | 'tv' | 'show';
+  tab?: string;
+  genre?: string;
+  region?: string;
+  era?: string;
+  pageLimit?: number;
+  pageStart?: number;
+}
+
+// 原有豆瓣接口支持的地区（app 端接口只认这几种）
+const BASIC_REGIONS = ['全部', '欧美', '韩国', '日本'];
+
+/**
+ * 统一的豆瓣浏览数据获取：默认情况沿用原有接口；
+ * 选择更多类型/地区/年代筛选时，走 /api/douban/explore（网页版筛选接口）。
+ */
+export async function getDoubanBrowse(
+  params: DoubanBrowseParams
+): Promise<DoubanResult> {
+  const {
+    type,
+    tab = '',
+    genre = '全部',
+    region = '全部',
+    era = '全部',
+    pageLimit = 25,
+    pageStart = 0,
+  } = params;
+
+  const useBasicApi =
+    (genre === '全部' || !genre) &&
+    (era === '全部' || !era) &&
+    (type === 'movie'
+      ? BASIC_REGIONS.includes(region || '全部')
+      : (region || '全部') === '全部');
+
+  if (useBasicApi) {
+    if (type === 'movie') {
+      return getDoubanCategories({
+        kind: 'movie',
+        category: tab || '热门',
+        type: region && region !== '全部' ? region : '全部',
+        pageLimit,
+        pageStart,
+      });
+    }
+    return getDoubanCategories({
+      kind: 'tv',
+      category: type,
+      type,
+      pageLimit,
+      pageStart,
+    });
+  }
+
+  const query = new URLSearchParams({
+    type,
+    tab,
+    genre: genre || '全部',
+    region: region || '全部',
+    era: era || '全部',
+    limit: String(pageLimit),
+    start: String(pageStart),
+  });
+
+  const response = await fetch(`/api/douban/explore?${query.toString()}`);
+
+  if (!response.ok) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('globalError', {
+          detail: { message: '获取豆瓣筛选数据失败' },
+        })
+      );
+    }
+    throw new Error('获取豆瓣筛选数据失败');
+  }
+
+  return response.json();
+}
+
 interface DoubanListParams {
   tag: string;
   type: string;

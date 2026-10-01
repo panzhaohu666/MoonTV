@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getDoubanCategories, getDoubanList } from '@/lib/douban.client';
+import { getDoubanBrowse, getDoubanList } from '@/lib/douban.client';
 import { DoubanItem, DoubanResult } from '@/lib/types';
 
 import DoubanCardSkeleton from '@/components/DoubanCardSkeleton';
@@ -44,6 +44,9 @@ function DoubanPageClient() {
     if (type === 'show') return 'show';
     return '全部';
   });
+  const [genreSelection, setGenreSelection] = useState<string>('全部');
+  const [regionSelection, setRegionSelection] = useState<string>('全部');
+  const [eraSelection, setEraSelection] = useState<string>('全部');
 
   // 获取自定义分类数据
   useEffect(() => {
@@ -71,6 +74,11 @@ function DoubanPageClient() {
 
   // 当type变化时重置选择器状态
   useEffect(() => {
+    // 筛选行恢复默认
+    setGenreSelection('全部');
+    setRegionSelection('全部');
+    setEraSelection('全部');
+
     if (type === 'custom' && customCategories.length > 0) {
       // 自定义分类模式：优先选择 movie，如果没有 movie 则选择 tv
       const types = Array.from(
@@ -123,29 +131,17 @@ function DoubanPageClient() {
   const skeletonData = Array.from({ length: 25 }, (_, index) => index);
 
   // 生成API请求参数的辅助函数
-  const getRequestParams = useCallback(
-    (pageStart: number) => {
-      // 当type为tv或show时，kind统一为'tv'，category使用type本身
-      if (type === 'tv' || type === 'show') {
-        return {
-          kind: 'tv' as const,
-          category: type,
-          type: secondarySelection,
-          pageLimit: 25,
-          pageStart,
-        };
-      }
-
-      // 电影类型保持原逻辑
-      return {
-        kind: type as 'tv' | 'movie',
-        category: primarySelection,
-        type: secondarySelection,
-        pageLimit: 25,
-        pageStart,
-      };
-    },
-    [type, primarySelection, secondarySelection]
+  const getExploreParams = useCallback(
+    (pageStart: number) => ({
+      type: (type === 'custom' ? 'movie' : type) as 'movie' | 'tv' | 'show',
+      tab: type === 'movie' ? primarySelection : '',
+      genre: genreSelection,
+      region: regionSelection,
+      era: eraSelection,
+      pageLimit: 25,
+      pageStart,
+    }),
+    [type, primarySelection, genreSelection, regionSelection, eraSelection]
   );
 
   // 防抖的数据加载函数
@@ -172,12 +168,12 @@ function DoubanPageClient() {
           throw new Error('没有找到对应的分类');
         }
       } else {
-        data = await getDoubanCategories(getRequestParams(0));
+        data = await getDoubanBrowse(getExploreParams(0));
       }
 
       if (data.code === 200) {
         setDoubanData(data.list);
-        setHasMore(data.list.length === 25);
+        setHasMore(data.list.length > 0);
         setLoading(false);
       } else {
         throw new Error(data.message || '获取数据失败');
@@ -189,7 +185,10 @@ function DoubanPageClient() {
     type,
     primarySelection,
     secondarySelection,
-    getRequestParams,
+    genreSelection,
+    regionSelection,
+    eraSelection,
+    getExploreParams,
     customCategories,
   ]);
 
@@ -226,7 +225,9 @@ function DoubanPageClient() {
     selectorsReady,
     type,
     primarySelection,
-    secondarySelection,
+    genreSelection,
+    regionSelection,
+    eraSelection,
     loadInitialData,
   ]);
 
@@ -257,14 +258,12 @@ function DoubanPageClient() {
               throw new Error('没有找到对应的分类');
             }
           } else {
-            data = await getDoubanCategories(
-              getRequestParams(currentPage * 25)
-            );
+            data = await getDoubanBrowse(getExploreParams(currentPage * 25));
           }
 
           if (data.code === 200) {
             setDoubanData((prev) => [...prev, ...data.list]);
-            setHasMore(data.list.length === 25);
+            setHasMore(data.list.length > 0);
           } else {
             throw new Error(data.message || '获取数据失败');
           }
@@ -282,6 +281,9 @@ function DoubanPageClient() {
     type,
     primarySelection,
     secondarySelection,
+    genreSelection,
+    regionSelection,
+    eraSelection,
     customCategories,
   ]);
 
@@ -354,6 +356,36 @@ function DoubanPageClient() {
     [secondarySelection]
   );
 
+  const handleGenreChange = useCallback(
+    (value: string) => {
+      if (value !== genreSelection) {
+        setLoading(true);
+        setGenreSelection(value);
+      }
+    },
+    [genreSelection]
+  );
+
+  const handleRegionChange = useCallback(
+    (value: string) => {
+      if (value !== regionSelection) {
+        setLoading(true);
+        setRegionSelection(value);
+      }
+    },
+    [regionSelection]
+  );
+
+  const handleEraChange = useCallback(
+    (value: string) => {
+      if (value !== eraSelection) {
+        setLoading(true);
+        setEraSelection(value);
+      }
+    },
+    [eraSelection]
+  );
+
   const getPageTitle = () => {
     // 根据 type 生成标题
     return type === 'movie'
@@ -395,9 +427,13 @@ function DoubanPageClient() {
               <DoubanSelector
                 type={type as 'movie' | 'tv' | 'show'}
                 primarySelection={primarySelection}
-                secondarySelection={secondarySelection}
+                genreSelection={genreSelection}
+                regionSelection={regionSelection}
+                eraSelection={eraSelection}
                 onPrimaryChange={handlePrimaryChange}
-                onSecondaryChange={handleSecondaryChange}
+                onGenreChange={handleGenreChange}
+                onRegionChange={handleRegionChange}
+                onEraChange={handleEraChange}
               />
             </div>
           ) : (
