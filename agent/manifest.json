@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "roots": [
+    {
+      "path": "src/app/api",
+      "kind": "tool",
+      "description": "Next.js API route tools"
+    },
+    {
+      "path": "src/lib",
+      "kind": "tool",
+      "description": "Shared application capabilities"
+    },
+    {
+      "path": "scripts",
+      "kind": "tool",
+      "description": "Project automation tools"
+    },
+    { "path": ".husky", "kind": "hook", "description": "Git lifecycle hooks" },
+    {
+      "path": "src/components",
+      "kind": "resource",
+      "description": "UI capability adapters"
+    }
+  ]
+}

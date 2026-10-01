@@ -2,6 +2,30 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
+function isSafeImageUrl(value: string): boolean {
+  if (value.length > 2048) return false;
+
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase().replace(/[[\]]/g, '');
+    const privateIpv4 =
+      /^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.|0\.)/;
+
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      !url.username &&
+      !url.password &&
+      hostname !== 'localhost' &&
+      !hostname.endsWith('.localhost') &&
+      hostname !== '::1' &&
+      !privateIpv4.test(hostname) &&
+      hostname !== 'metadata.google.internal'
+    );
+  } catch {
+    return false;
+  }
+}
+
 // OrionTV 兼容接口
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -11,6 +35,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Missing image URL' }, { status: 400 });
   }
 
+  if (!isSafeImageUrl(imageUrl)) {
+    return NextResponse.json(
+      { error: 'Image URL is not allowed' },
+      { status: 400 }
+    );
+  }
+
   try {
     const imageResponse = await fetch(imageUrl, {
       headers: {
@@ -18,6 +49,7 @@ export async function GET(request: Request) {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
       },
+      signal: AbortSignal.timeout(10000),
     });
 
     if (!imageResponse.ok) {
@@ -28,6 +60,13 @@ export async function GET(request: Request) {
     }
 
     const contentType = imageResponse.headers.get('content-type');
+
+    if (!contentType?.toLowerCase().startsWith('image/')) {
+      return NextResponse.json(
+        { error: 'Upstream response is not an image' },
+        { status: 415 }
+      );
+    }
 
     if (!imageResponse.body) {
       return NextResponse.json(
