@@ -103,6 +103,10 @@ export interface DoubanItem {
   poster: string;
   rate: string;
   year: string;
+  mediaType?: string;
+  region?: string;
+  genres?: string[];
+  episodesInfo?: string;
 }
 
 export interface DoubanResult {

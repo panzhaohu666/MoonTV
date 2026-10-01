@@ -255,6 +255,10 @@ function HomeClient() {
                             rate={movie.rate}
                             year={movie.year}
                             type='movie'
+                            mediaType={movie.mediaType}
+                            region={movie.region}
+                            genres={movie.genres}
+                            episodesInfo={movie.episodesInfo}
                           />
                         </div>
                       ))}
@@ -302,6 +306,10 @@ function HomeClient() {
                             douban_id={show.id}
                             rate={show.rate}
                             year={show.year}
+                            mediaType={show.mediaType}
+                            region={show.region}
+                            genres={show.genres}
+                            episodesInfo={show.episodesInfo}
                           />
                         </div>
                       ))}
@@ -349,6 +357,10 @@ function HomeClient() {
                             douban_id={show.id}
                             rate={show.rate}
                             year={show.year}
+                            mediaType={show.mediaType}
+                            region={show.region}
+                            genres={show.genres}
+                            episodesInfo={show.episodesInfo}
                           />
                         </div>
                       ))}

@@ -16,7 +16,37 @@ interface DoubanCategoryApiResponse {
     rating: {
       value: number;
     };
+    type?: string;
+    episodes_info?: string;
   }>;
+}
+
+// 解析豆瓣的 card_subtitle，如「2026 / 中国大陆 / 剧情 喜剧 / 导演 / 演员」
+function parseCardSubtitle(subtitle?: string): {
+  year: string;
+  region: string;
+  genres: string[];
+} {
+  if (!subtitle) return { year: '', region: '', genres: [] };
+  const parts = subtitle
+    .split(' / ')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const yearMatch = subtitle.match(/(19|20)\d{2}/);
+  const year = yearMatch ? yearMatch[0] : '';
+  const yearIdx = parts.findIndex((part) => /^(19|20)\d{2}/.test(part));
+  const region =
+    yearIdx >= 0 && parts[yearIdx + 1] && !/^\d/.test(parts[yearIdx + 1])
+      ? parts[yearIdx + 1]
+      : '';
+  const genrePart = yearIdx >= 0 ? parts[yearIdx + 2] || '' : '';
+  const genres = genrePart
+    ? genrePart
+        .split(/[\s,，、/]+/)
+        .filter((genre) => genre && genre.length <= 6)
+        .slice(0, 3)
+    : [];
+  return { year, region, genres };
 }
 
 async function fetchDoubanData(
@@ -102,13 +132,22 @@ export async function GET(request: Request) {
     const doubanData = await fetchDoubanData(target);
 
     // 转换数据格式
-    const list: DoubanItem[] = doubanData.items.map((item) => ({
-      id: item.id,
-      title: item.title,
-      poster: item.pic?.normal || item.pic?.large || '',
-      rate: item.rating?.value ? item.rating.value.toFixed(1) : '',
-      year: item.card_subtitle?.match(/(\d{4})/)?.[1] || '',
-    }));
+    const fallbackMediaType =
+      kind === 'movie' ? '电影' : category === 'show' ? '综艺' : '电视剧';
+    const list: DoubanItem[] = doubanData.items.map((item) => {
+      const parsed = parseCardSubtitle(item.card_subtitle);
+      return {
+        id: item.id,
+        title: item.title,
+        poster: item.pic?.normal || item.pic?.large || '',
+        rate: item.rating?.value ? item.rating.value.toFixed(1) : '',
+        year: parsed.year,
+        mediaType: item.type === 'movie' ? '电影' : fallbackMediaType,
+        region: parsed.region,
+        genres: parsed.genres,
+        episodesInfo: item.episodes_info || '',
+      };
+    });
 
     const response: DoubanResult = {
       code: 200,

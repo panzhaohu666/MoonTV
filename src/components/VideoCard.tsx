@@ -35,6 +35,10 @@ interface VideoCardProps {
   rate?: string;
   items?: SearchResult[];
   type?: string;
+  mediaType?: string;
+  region?: string;
+  genres?: string[];
+  episodesInfo?: string;
 }
 
 export default function VideoCard({
@@ -54,6 +58,10 @@ export default function VideoCard({
   rate,
   items,
   type = '',
+  mediaType = '',
+  region = '',
+  genres = [],
+  episodesInfo = '',
 }: VideoCardProps) {
   const router = useRouter();
   const [favorited, setFavorited] = useState(false);
@@ -339,6 +347,22 @@ export default function VideoCard({
           </div>
         )}
 
+        {/* 豆瓣卡片的类型/集数角标 */}
+        {from === 'douban' && (mediaType || episodesInfo) && (
+          <>
+            {mediaType && (
+              <div className='absolute bottom-2 left-2 z-10 bg-black/60 text-white text-[10px] sm:text-xs px-1.5 py-0.5 rounded backdrop-blur-sm'>
+                {mediaType}
+              </div>
+            )}
+            {episodesInfo && (
+              <div className='absolute bottom-2 right-2 z-10 bg-black/60 text-white text-[10px] sm:text-xs px-1.5 py-0.5 rounded backdrop-blur-sm'>
+                {episodesInfo}
+              </div>
+            )}
+          </>
+        )}
+
         {/* 豆瓣链接 */}
         {config.showDoubanLink && actualDoubanId && (
           <a
@@ -377,6 +401,20 @@ export default function VideoCard({
             <div className='absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800'></div>
           </div>
         </div>
+        {from === 'douban' && (year || region || genres.length > 0) && (
+          <div className='mt-1 flex flex-wrap items-center justify-center gap-1'>
+            {[year, region, ...genres.slice(0, 3)]
+              .filter((tag): tag is string => Boolean(tag))
+              .map((tag) => (
+                <span
+                  key={tag}
+                  className='inline-block max-w-full truncate text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 border border-gray-300/70 dark:border-gray-600/70 rounded px-1.5 py-[1px]'
+                >
+                  {tag}
+                </span>
+              ))}
+          </div>
+        )}
         {config.showSourceName && source_name && (
           <span className='block text-xs text-gray-500 dark:text-gray-400 mt-1'>
             <span className='inline-block border rounded px-2 py-0.5 border-gray-500/60 dark:border-gray-400/60 transition-all duration-300 ease-in-out group-hover:border-green-500/60 group-hover:text-green-600 dark:group-hover:text-green-400'>

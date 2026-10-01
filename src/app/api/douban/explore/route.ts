@@ -34,6 +34,65 @@ function toYearRange(era: string): string {
   return map[era] || '';
 }
 
+interface DoubanSubjectAbstract {
+  is_tv?: boolean;
+  types?: string[];
+  region?: string;
+  release_year?: string | number;
+  episodes_count?: string | number;
+}
+
+// 查询单个条目的基础信息（年代/地区/类型/集数），失败返回 null
+async function fetchSubjectAbstract(
+  id: string
+): Promise<DoubanSubjectAbstract | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(
+      `https://movie.douban.com/j/subject_abstract?subject_id=${id}`,
+      {
+        signal: controller.signal,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          Referer: `https://movie.douban.com/subject/${id}/`,
+          Accept: 'application/json, text/plain, */*',
+        },
+      }
+    );
+    clearTimeout(timeoutId);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data && data.subject ? data.subject : null;
+  } catch {
+    clearTimeout(timeoutId);
+    return null;
+  }
+}
+
+// 并发受限的 map，避免同时向豆瓣发太多请求
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (cursor < items.length) {
+        const index = cursor;
+        cursor += 1;
+        results[index] = await fn(items[index]);
+      }
+    }
+  );
+  await Promise.all(workers);
+  return results;
+}
+
 export const runtime = 'edge';
 
 export async function GET(request: Request) {
@@ -125,13 +184,43 @@ export async function GET(request: Request) {
 
     const doubanData: DoubanExploreApiResponse = await response.json();
 
-    const list: DoubanItem[] = (doubanData.data || []).map((item) => ({
+    const fallbackMediaType =
+      type === 'movie' ? '电影' : type === 'show' ? '综艺' : '电视剧';
+    const baseList: DoubanItem[] = (doubanData.data || []).map((item) => ({
       id: item.id,
       title: item.title,
       poster: item.cover || '',
       rate: item.rate || '',
       year: '',
+      mediaType: fallbackMediaType,
     }));
+
+    // 逐条补充年代/地区/类型/集数标签（失败则退回基础数据）
+    const list: DoubanItem[] = await mapWithConcurrency(
+      baseList,
+      5,
+      async (item) => {
+        const info = await fetchSubjectAbstract(item.id);
+        if (!info) return item;
+        const episodesCount = Number(info.episodes_count) || 0;
+        const mediaType =
+          type === 'show' ? '综艺' : info.is_tv ? '电视剧' : '电影';
+        return {
+          ...item,
+          mediaType,
+          region: info.region || item.region || '',
+          genres:
+            info.types && info.types.length > 0
+              ? info.types.slice(0, 3)
+              : item.genres,
+          year: info.release_year ? String(info.release_year) : item.year,
+          episodesInfo:
+            info.is_tv && episodesCount > 0
+              ? `${episodesCount}集`
+              : item.episodesInfo,
+        };
+      }
+    );
 
     const result: DoubanResult = {
       code: 200,
