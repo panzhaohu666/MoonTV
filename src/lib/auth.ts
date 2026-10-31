@@ -56,15 +56,23 @@ export function getAuthInfoFromBrowserCookie(): {
       return null;
     }
 
-    // 处理可能的双重编码
-    let decoded = decodeURIComponent(authCookie);
+    // cookie 由 encodeURIComponent(JSON.stringify(...)) 写入，解码一次即可。
+    // 只在 JSON 解析失败时，才尝试再解一次以兼容历史双重编码的 cookie，
+    // 避免密码本身含 '%' 时被误判成双重编码而抛 URI malformed。
+    let authData: {
+      password?: string;
+      username?: string;
+      signature?: string;
+      timestamp?: number;
+      role?: 'owner' | 'admin' | 'user';
+    };
 
-    // 如果解码后仍然包含 %，说明是双重编码，需要再次解码
-    if (decoded.includes('%')) {
-      decoded = decodeURIComponent(decoded);
+    try {
+      authData = JSON.parse(decodeURIComponent(authCookie));
+    } catch {
+      authData = JSON.parse(decodeURIComponent(decodeURIComponent(authCookie)));
     }
 
-    const authData = JSON.parse(decoded);
     return authData;
   } catch (error) {
     return null;

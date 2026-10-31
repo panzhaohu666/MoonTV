@@ -84,9 +84,18 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
   useLayoutEffect(() => {
     const saved = localStorage.getItem('sidebarCollapsed');
     if (saved !== null) {
-      const val = JSON.parse(saved);
-      setIsCollapsed(val);
-      window.__sidebarCollapsed = val;
+      // 解析失败或不是布尔值时保持默认，避免把字符串/空值塞进 state 再写回存储
+      let val: boolean | null = null;
+      try {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'boolean') val = parsed;
+      } catch {
+        if (saved === 'true' || saved === 'false') val = saved === 'true';
+      }
+      if (val !== null) {
+        setIsCollapsed(val);
+        window.__sidebarCollapsed = val;
+      }
     }
   }, []);
 

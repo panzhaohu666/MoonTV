@@ -61,13 +61,13 @@ async function fetchSubjectAbstract(
         },
       }
     );
-    clearTimeout(timeoutId);
     if (!response.ok) return null;
     const data = await response.json();
     return data && data.subject ? data.subject : null;
   } catch {
-    clearTimeout(timeoutId);
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -182,7 +182,6 @@ export async function GET(request: Request) {
         Origin: 'https://movie.douban.com',
       },
     });
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`HTTP error! Status: ${response.status}`);
@@ -243,10 +242,11 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    clearTimeout(timeoutId);
     return NextResponse.json(
       { error: '获取豆瓣筛选数据失败', details: (error as Error).message },
       { status: 500 }
     );
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

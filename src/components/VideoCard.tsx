@@ -12,6 +12,7 @@ import {
   isFavorited,
   saveFavorite,
   subscribeToDataUpdates,
+  triggerGlobalError,
 } from '@/lib/db.client';
 import { SearchResult } from '@/lib/types';
 import { processImageUrl } from '@/lib/utils';
@@ -66,8 +67,16 @@ export default function VideoCard({
   const router = useRouter();
   const [favorited, setFavorited] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const isAggregate = from === 'search' && !!items?.length;
+
+  // 聚合数据晚到或列表复用同一组件时 poster 会变，重置失败状态否则新海报一直不显示
+  const posterForReset = items?.[0]?.poster ?? poster;
+  useEffect(() => {
+    setImageError(false);
+    setIsLoading(false);
+  }, [posterForReset]);
 
   const aggregateData = useMemo(() => {
     if (!isAggregate || !items) return null;
@@ -108,10 +117,19 @@ export default function VideoCard({
   const actualPoster = aggregateData?.first.poster ?? poster;
   const actualSource = aggregateData?.first.source ?? source;
   const actualId = aggregateData?.first.id ?? id;
-  const actualDoubanId = String(
-    aggregateData?.mostFrequentDoubanId ?? douban_id
-  );
-  const actualEpisodes = aggregateData?.mostFrequentEpisodes ?? episodes;
+  // String(undefined) === 'undefined' 是真值，必须显式判空，否则链接变成 /subject/undefined
+  const rawDoubanId = aggregateData?.mostFrequentDoubanId ?? douban_id;
+  const actualDoubanId =
+    rawDoubanId === undefined || rawDoubanId === null || rawDoubanId === ''
+      ? ''
+      : String(rawDoubanId);
+  // 0 集是「未知/未解析」，不是真的有 0 集：`?? 1` 挡不住 0，
+  // 会让收藏的 total_episodes 写成 0，角标与进度条随之异常。
+  const rawEpisodes = aggregateData?.mostFrequentEpisodes ?? episodes;
+  const actualEpisodes =
+    typeof rawEpisodes === 'number' && rawEpisodes > 0
+      ? rawEpisodes
+      : undefined;
   const actualYear = aggregateData?.first.year ?? year;
   const actualQuery = query || '';
   const actualSearchType = isAggregate
@@ -129,7 +147,8 @@ export default function VideoCard({
         const fav = await isFavorited(actualSource, actualId);
         setFavorited(fav);
       } catch (err) {
-        throw new Error('检查收藏状态失败');
+        // 这里是异步 effect，throw 只会变成 unhandled rejection，不产生任何可见反馈
+        triggerGlobalError('检查收藏状态失败');
       }
     };
 
@@ -172,7 +191,7 @@ export default function VideoCard({
           setFavorited(true);
         }
       } catch (err) {
-        throw new Error('切换收藏状态失败');
+        triggerGlobalError('切换收藏状态失败');
       }
     },
     [
@@ -197,7 +216,7 @@ export default function VideoCard({
         await deletePlayRecord(actualSource, actualId);
         onDelete?.();
       } catch (err) {
-        throw new Error('删除播放记录失败');
+        triggerGlobalError('删除播放记录失败');
       }
     },
     [from, actualSource, actualId, onDelete]
@@ -282,16 +301,30 @@ export default function VideoCard({
     >
       {/* 海报容器 */}
       <div className='relative aspect-[2/3] overflow-hidden rounded-lg'>
-        {/* 骨架屏 */}
-        {!isLoading && <ImagePlaceholder aspectRatio='aspect-[2/3]' />}
+        {/* 骨架屏（图片加载失败时也要收起来，否则永久盖住卡片） */}
+        {!isLoading && !imageError && (
+          <ImagePlaceholder aspectRatio='aspect-[2/3]' />
+        )}
+        {/* 图片失败落空时显示的占位 */}
+        {imageError && (
+          <div className='absolute inset-0 flex items-center justify-center bg-gray-200 dark:bg-white/10'>
+            <span className='text-xs text-gray-400 px-2 text-center line-clamp-2'>
+              {actualTitle}
+            </span>
+          </div>
+        )}
         {/* 图片 */}
         <Image
           src={processImageUrl(actualPoster)}
           alt={actualTitle}
           fill
-          className='object-cover'
+          className={`object-cover ${imageError ? 'opacity-0' : ''}`}
           referrerPolicy='no-referrer'
           onLoadingComplete={() => setIsLoading(true)}
+          onError={() => {
+            setImageError(true);
+            setIsLoading(true);
+          }}
         />
 
         {/* 悬浮遮罩 */}

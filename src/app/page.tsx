@@ -75,26 +75,36 @@ function HomeClient() {
         setLoading(true);
 
         // 并行获取热门电影、热门剧集和热门综艺
-        const [moviesData, tvShowsData, varietyShowsData] = await Promise.all([
-          getDoubanCategories({
-            kind: 'movie',
-            category: '热门',
-            type: '全部',
-          }),
-          getDoubanCategories({ kind: 'tv', category: 'tv', type: 'tv' }),
-          getDoubanCategories({ kind: 'tv', category: 'show', type: 'show' }),
-        ]);
+        const [moviesResult, tvShowsResult, varietyShowsResult] =
+          await Promise.allSettled([
+            getDoubanCategories({
+              kind: 'movie',
+              category: '热门',
+              type: '全部',
+            }),
+            getDoubanCategories({ kind: 'tv', category: 'tv', type: 'tv' }),
+            getDoubanCategories({ kind: 'tv', category: 'show', type: 'show' }),
+          ]);
 
-        if (moviesData.code === 200) {
-          setHotMovies(moviesData.list);
+        if (
+          moviesResult.status === 'fulfilled' &&
+          moviesResult.value.code === 200
+        ) {
+          setHotMovies(moviesResult.value.list);
         }
 
-        if (tvShowsData.code === 200) {
-          setHotTvShows(tvShowsData.list);
+        if (
+          tvShowsResult.status === 'fulfilled' &&
+          tvShowsResult.value.code === 200
+        ) {
+          setHotTvShows(tvShowsResult.value.list);
         }
 
-        if (varietyShowsData.code === 200) {
-          setHotVarietyShows(varietyShowsData.list);
+        if (
+          varietyShowsResult.status === 'fulfilled' &&
+          varietyShowsResult.value.code === 200
+        ) {
+          setHotVarietyShows(varietyShowsResult.value.list);
         }
       } catch (error) {
         console.error('获取豆瓣数据失败:', error);
@@ -115,8 +125,9 @@ function HomeClient() {
       .sort(([, a], [, b]) => b.save_time - a.save_time)
       .map(([key, fav]) => {
         const plusIndex = key.indexOf('+');
-        const source = key.slice(0, plusIndex);
-        const id = key.slice(plusIndex + 1);
+        // key 不含分隔符时整串当作 id，避免 slice(-1) 静默截断
+        const source = plusIndex >= 0 ? key.slice(0, plusIndex) : '';
+        const id = plusIndex >= 0 ? key.slice(plusIndex + 1) : key;
 
         // 查找对应的播放记录，获取当前集数
         const playRecord = allPlayRecords[key];

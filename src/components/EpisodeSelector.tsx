@@ -93,16 +93,31 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
   const initialPage = Math.floor((value - 1) / episodesPerPage);
   const [currentPage, setCurrentPage] = useState<number>(initialPage);
 
+  // 换源后集数可能变少，currentPage 会越界：越界时 currentEnd < currentStart，
+  // 网格长度算成负数 → 选集面板一个按钮都没有。这里兜到合法范围。
+  const safePage = Math.min(
+    Math.max(currentPage, 0),
+    Math.max(pageCount - 1, 0)
+  );
+
+  // 当前集换到别的分页时（自动下一集、外部跳集），分页要跟过去，
+  // 否则高亮 pill 消失、面板仍停在旧页。
+  useEffect(() => {
+    const pageOfValue = Math.floor((value - 1) / episodesPerPage);
+    if (pageOfValue < 0 || pageOfValue >= pageCount) return;
+    setCurrentPage((prev) => (prev === pageOfValue ? prev : pageOfValue));
+  }, [value, episodesPerPage, pageCount]);
+
   // 是否倒序显示
   const [descending, setDescending] = useState<boolean>(false);
 
   // 根据 descending 状态计算实际显示的分页索引
   const displayPage = useMemo(() => {
     if (descending) {
-      return pageCount - 1 - currentPage;
+      return pageCount - 1 - safePage;
     }
-    return currentPage;
-  }, [currentPage, descending, pageCount]);
+    return safePage;
+  }, [safePage, descending, pageCount]);
 
   // 获取视频信息的函数 - 移除 attemptedSources 依赖避免不必要的重新创建
   const getVideoInfo = useCallback(async (source: SearchResult) => {
@@ -295,7 +310,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
     [onSourceChange]
   );
 
-  const currentStart = currentPage * episodesPerPage + 1;
+  const currentStart = safePage * episodesPerPage + 1;
   const currentEnd = Math.min(
     currentStart + episodesPerPage - 1,
     totalEpisodes
@@ -393,7 +408,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
           {/* 集数网格 */}
           <div className='grid grid-cols-[repeat(auto-fill,minmax(40px,1fr))] auto-rows-[40px] gap-x-3 gap-y-3 overflow-y-auto h-full pb-4'>
             {(() => {
-              const len = currentEnd - currentStart + 1;
+              const len = Math.max(currentEnd - currentStart + 1, 0);
               const episodes = Array.from({ length: len }, (_, i) =>
                 descending ? currentEnd - i : currentStart + i
               );
@@ -459,7 +474,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
             !sourceSearchError &&
             availableSources.length > 0 && (
               <div className='flex-1 overflow-y-auto space-y-2 pb-20'>
-                {availableSources
+                {[...availableSources]
                   .sort((a, b) => {
                     const aIsCurrent =
                       a.source?.toString() === currentSource?.toString() &&
@@ -563,9 +578,9 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
                             <span className='text-xs px-2 py-1 border border-gray-500/60 rounded text-gray-700 dark:text-gray-300'>
                               {source.source_name}
                             </span>
-                            {source.episodes.length > 1 && (
+                            {(source.episodes?.length || 0) > 1 && (
                               <span className='text-xs text-gray-500 dark:text-gray-400 font-medium'>
-                                {source.episodes.length} 集
+                                {source.episodes?.length || 0} 集
                               </span>
                             )}
                           </div>

@@ -18,7 +18,7 @@ import { getAuthInfoFromBrowserCookie } from './auth';
 import { SkipConfig } from './types';
 
 // 全局错误触发函数
-function triggerGlobalError(message: string) {
+export function triggerGlobalError(message: string) {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('globalError', {
@@ -425,6 +425,26 @@ async function fetchWithAuth(
   return res;
 }
 
+/**
+ * 读取缓存基线用于乐观更新。
+ * 缓存失效（超过 1 小时）时 getCachedXxx 返回 null，此时若直接 `|| {}` 就会把整张表
+ * 当作空表，写入后广播出去，UI 列表会塌成只剩这一条（DB 里数据其实完好）。
+ * 因此缓存缺失时先向服务端取全量，取不到才退化成空对象。
+ */
+async function getBaselineForUpdate<T>(
+  cached: T | null,
+  endpoint: string,
+  fallback: T
+): Promise<T> {
+  if (cached) return cached;
+  try {
+    return await fetchFromApi<T>(endpoint);
+  } catch (err) {
+    console.warn(`缓存已失效且拉取 ${endpoint} 失败，将以空基线更新:`, err);
+    return fallback;
+  }
+}
+
 async function fetchFromApi<T>(path: string): Promise<T> {
   const res = await fetchWithAuth(path);
   return (await res.json()) as T;
@@ -517,7 +537,11 @@ export async function savePlayRecord(
   // 数据库存储模式：乐观更新策略（包括 redis、d1、upstash）
   if (STORAGE_TYPE !== 'localstorage') {
     // 立即更新缓存
-    const cachedRecords = cacheManager.getCachedPlayRecords() || {};
+    const cachedRecords = await getBaselineForUpdate(
+      cacheManager.getCachedPlayRecords(),
+      '/api/playrecords',
+      {} as Record<string, PlayRecord>
+    );
     cachedRecords[key] = record;
     cacheManager.cachePlayRecords(cachedRecords);
 
@@ -580,7 +604,11 @@ export async function deletePlayRecord(
   // 数据库存储模式：乐观更新策略（包括 redis、d1、upstash）
   if (STORAGE_TYPE !== 'localstorage') {
     // 立即更新缓存
-    const cachedRecords = cacheManager.getCachedPlayRecords() || {};
+    const cachedRecords = await getBaselineForUpdate(
+      cacheManager.getCachedPlayRecords(),
+      '/api/playrecords',
+      {} as Record<string, PlayRecord>
+    );
     delete cachedRecords[key];
     cacheManager.cachePlayRecords(cachedRecords);
 
@@ -703,7 +731,11 @@ export async function addSearchHistory(keyword: string): Promise<void> {
   // 数据库存储模式：乐观更新策略（包括 redis、d1、upstash）
   if (STORAGE_TYPE !== 'localstorage') {
     // 立即更新缓存
-    const cachedHistory = cacheManager.getCachedSearchHistory() || [];
+    const cachedHistory = await getBaselineForUpdate(
+      cacheManager.getCachedSearchHistory(),
+      '/api/searchhistory',
+      [] as string[]
+    );
     const newHistory = [trimmed, ...cachedHistory.filter((k) => k !== trimmed)];
     // 限制长度
     if (newHistory.length > SEARCH_HISTORY_LIMIT) {
@@ -804,7 +836,11 @@ export async function deleteSearchHistory(keyword: string): Promise<void> {
   // 数据库存储模式：乐观更新策略（包括 redis、d1、upstash）
   if (STORAGE_TYPE !== 'localstorage') {
     // 立即更新缓存
-    const cachedHistory = cacheManager.getCachedSearchHistory() || [];
+    const cachedHistory = await getBaselineForUpdate(
+      cacheManager.getCachedSearchHistory(),
+      '/api/searchhistory',
+      [] as string[]
+    );
     const newHistory = cachedHistory.filter((k) => k !== trimmed);
     cacheManager.cacheSearchHistory(newHistory);
 
@@ -927,7 +963,11 @@ export async function saveFavorite(
   // 数据库存储模式：乐观更新策略（包括 redis、d1、upstash）
   if (STORAGE_TYPE !== 'localstorage') {
     // 立即更新缓存
-    const cachedFavorites = cacheManager.getCachedFavorites() || {};
+    const cachedFavorites = await getBaselineForUpdate(
+      cacheManager.getCachedFavorites(),
+      '/api/favorites',
+      {} as Record<string, Favorite>
+    );
     cachedFavorites[key] = favorite;
     cacheManager.cacheFavorites(cachedFavorites);
 
@@ -990,7 +1030,11 @@ export async function deleteFavorite(
   // 数据库存储模式：乐观更新策略（包括 redis、d1、upstash）
   if (STORAGE_TYPE !== 'localstorage') {
     // 立即更新缓存
-    const cachedFavorites = cacheManager.getCachedFavorites() || {};
+    const cachedFavorites = await getBaselineForUpdate(
+      cacheManager.getCachedFavorites(),
+      '/api/favorites',
+      {} as Record<string, Favorite>
+    );
     delete cachedFavorites[key];
     cacheManager.cacheFavorites(cachedFavorites);
 
@@ -1423,7 +1467,11 @@ export async function saveSkipConfig(
   // 数据库存储模式：乐观更新策略（包括 redis、d1、upstash）
   if (STORAGE_TYPE !== 'localstorage') {
     // 立即更新缓存
-    const cachedConfigs = cacheManager.getCachedSkipConfigs() || {};
+    const cachedConfigs = await getBaselineForUpdate(
+      cacheManager.getCachedSkipConfigs(),
+      '/api/skipconfigs',
+      {} as Record<string, SkipConfig>
+    );
     cachedConfigs[key] = config;
     cacheManager.cacheSkipConfigs(cachedConfigs);
 
@@ -1550,7 +1598,11 @@ export async function deleteSkipConfig(
   // 数据库存储模式：乐观更新策略（包括 redis、d1、upstash）
   if (STORAGE_TYPE !== 'localstorage') {
     // 立即更新缓存
-    const cachedConfigs = cacheManager.getCachedSkipConfigs() || {};
+    const cachedConfigs = await getBaselineForUpdate(
+      cacheManager.getCachedSkipConfigs(),
+      '/api/skipconfigs',
+      {} as Record<string, SkipConfig>
+    );
     delete cachedConfigs[key];
     cacheManager.cacheSkipConfigs(cachedConfigs);
 

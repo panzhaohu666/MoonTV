@@ -71,16 +71,15 @@ async function fetchDoubanData(
   try {
     // 尝试直接访问豆瓣API
     const response = await fetch(url, fetchOptions);
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
 
-    return await response.json();
-  } catch (error) {
+    // 读 body 也必须在超时保护内
+    return (await response.json()) as DoubanCategoryApiResponse;
+  } finally {
     clearTimeout(timeoutId);
-    throw error;
   }
 }
 
@@ -111,21 +110,26 @@ export async function GET(request: Request) {
     );
   }
 
-  if (pageLimit < 1 || pageLimit > 100) {
+  // parseInt('abc') 得到 NaN，而 NaN 参与的大小比较恒为 false，
+  // 只写区间判断会把 NaN 放行，最终拼出 limit=NaN 的上游请求。
+  if (!Number.isFinite(pageLimit) || pageLimit < 1 || pageLimit > 100) {
     return NextResponse.json(
       { error: 'pageSize 必须在 1-100 之间' },
       { status: 400 }
     );
   }
 
-  if (pageStart < 0) {
+  if (!Number.isFinite(pageStart) || pageStart < 0) {
     return NextResponse.json(
       { error: 'pageStart 不能小于 0' },
       { status: 400 }
     );
   }
 
-  const target = `https://m.douban.com/rexxar/api/v2/subject/recent_hot/${kind}?start=${pageStart}&limit=${pageLimit}&category=${category}&type=${type}`;
+  // category/type 是用户输入，直接拼进 URL 会被 & 注入额外参数，必须编码
+  const target = `https://m.douban.com/rexxar/api/v2/subject/recent_hot/${kind}?start=${pageStart}&limit=${pageLimit}&category=${encodeURIComponent(
+    category
+  )}&type=${encodeURIComponent(type)}`;
 
   try {
     // 调用豆瓣 API

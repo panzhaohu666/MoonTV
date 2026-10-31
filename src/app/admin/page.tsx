@@ -1705,17 +1705,31 @@ function AdminPageClient() {
       if (showLoading) {
         setLoading(true);
       }
+      // 先清掉上一次的错误，否则重试失败时 error 值不变，界面不会有任何反馈
+      setError(null);
 
       const response = await fetch(`/api/admin/config`);
 
       if (!response.ok) {
-        const data = (await response.json()) as any;
-        throw new Error(`获取配置失败: ${data.error}`);
+        // middleware 的 401 返回纯文本 'Unauthorized'，直接 response.json() 会抛
+        // SyntaxError 并被当成真实错误展示，掩盖真正原因
+        const raw = await response.text();
+        let message = raw;
+        try {
+          const parsed = JSON.parse(raw) as { error?: string };
+          if (parsed?.error) message = parsed.error;
+        } catch {
+          // 纯文本响应，原样使用
+        }
+        throw new Error(
+          `获取配置失败 (${response.status})${message ? `: ${message}` : ''}`
+        );
       }
 
       const data = (await response.json()) as AdminConfigResult;
       setConfig(data.Config);
       setRole(data.Role);
+      setError(null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '获取配置失败';
       showError(msg);
@@ -1786,8 +1800,26 @@ function AdminPageClient() {
   }
 
   if (error) {
-    // 错误已通过 SweetAlert2 展示，此处直接返回空
-    return null;
+    // 不能只返回 null：加载失败一次就没有任何可恢复入口，用户只能整页刷新
+    return (
+      <PageLayout activePath='/admin'>
+        <div className='flex items-center justify-center min-h-[60vh] px-6'>
+          <div className='text-center max-w-md'>
+            <div className='text-4xl mb-4'>⚠️</div>
+            <p className='text-base font-medium mb-2'>无法加载管理配置</p>
+            <p className='text-sm text-gray-500 dark:text-gray-400 mb-6 break-words'>
+              {error}
+            </p>
+            <button
+              onClick={() => fetchConfig(true)}
+              className='px-5 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors'
+            >
+              重试
+            </button>
+          </div>
+        </div>
+      </PageLayout>
+    );
   }
 
   return (

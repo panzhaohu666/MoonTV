@@ -3,7 +3,7 @@
 
 import { ChevronUp, Search, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   addSearchHistory,
@@ -26,17 +26,26 @@ function SearchPageClient() {
 
   const router = useRouter();
   const searchParams = useSearchParams();
+  // 搜索请求序号：只有最后一次请求的结果才允许写入 state，避免慢响应覆盖新结果
+  const searchSeqRef = useRef(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   // 获取默认聚合设置：只读取用户本地设置，默认为 true
   const getDefaultAggregate = () => {
     if (typeof window !== 'undefined') {
       const userSetting = localStorage.getItem('defaultAggregateSearch');
       if (userSetting !== null) {
-        return JSON.parse(userSetting);
+        // 存储内容损坏时不能抛错：这个函数在 useState 初始化器里执行，
+        // 一旦抛错会连带整个页面渲染失败，而项目没有 error boundary。
+        try {
+          return Boolean(JSON.parse(userSetting));
+        } catch {
+          return userSetting === 'true';
+        }
       }
     }
     return true; // 默认启用聚合
@@ -53,7 +62,7 @@ function SearchPageClient() {
       // 使用 title + year + type 作为键，year 必然存在，但依然兜底 'unknown'
       const key = `${item.title.replaceAll(' ', '')}-${
         item.year || 'unknown'
-      }-${item.episodes.length === 1 ? 'movie' : 'tv'}`;
+      }-${(item.episodes?.length || 0) === 1 ? 'movie' : 'tv'}`;
       const arr = map.get(key) || [];
       arr.push(item);
       map.set(key, arr);
@@ -160,12 +169,20 @@ function SearchPageClient() {
   }, [searchParams]);
 
   const fetchSearchResults = async (query: string) => {
+    const seq = ++searchSeqRef.current;
     try {
       setIsLoading(true);
+      setSearchError(null);
       const response = await fetch(
         `/api/search?q=${encodeURIComponent(query.trim())}`
       );
+      if (seq !== searchSeqRef.current) return;
+      if (!response.ok) {
+        throw new Error(`搜索接口返回 ${response.status}`);
+      }
       const data = await response.json();
+      // 已被更新的请求取代，丢弃本次结果，避免慢响应覆盖新结果
+      if (seq !== searchSeqRef.current) return;
       let results = data.results;
       if (
         typeof window !== 'undefined' &&
@@ -205,9 +222,12 @@ function SearchPageClient() {
       );
       setShowResults(true);
     } catch (error) {
+      if (seq !== searchSeqRef.current) return;
       setSearchResults([]);
+      setSearchError('搜索失败，请稍后重试');
+      setShowResults(true);
     } finally {
-      setIsLoading(false);
+      if (seq === searchSeqRef.current) setIsLoading(false);
     }
   };
 
@@ -221,12 +241,17 @@ function SearchPageClient() {
     setIsLoading(true);
     setShowResults(true);
 
-    router.push(`/search?q=${encodeURIComponent(trimmed)}`);
-    // 直接发请求
-    fetchSearchResults(trimmed);
+    const currentQuery = searchParams.get('q') || '';
+    if (currentQuery === trimmed) {
+      // URL 未变化，router.push 不会触发 useEffect，需要直接请求
+      fetchSearchResults(trimmed);
+      addSearchHistory(trimmed);
+      return;
+    }
 
-    // 保存到搜索历史 (事件监听会自动更新界面)
-    addSearchHistory(trimmed);
+    // URL 变化时由 useEffect([searchParams]) 统一发起请求与写历史，
+    // 这里不再重复请求（否则每次搜索会打两遍全部资源站）
+    router.push(`/search?q=${encodeURIComponent(trimmed)}`);
   };
 
   // 返回顶部功能
@@ -324,7 +349,7 @@ function SearchPageClient() {
                           id={item.id}
                           title={item.title + ' ' + item.type_name}
                           poster={item.poster}
-                          episodes={item.episodes.length}
+                          episodes={item.episodes?.length || 0}
                           source={item.source}
                           source_name={item.source_name}
                           douban_id={item.douban_id?.toString()}
@@ -335,13 +360,15 @@ function SearchPageClient() {
                           }
                           year={item.year}
                           from='search'
-                          type={item.episodes.length > 1 ? 'tv' : 'movie'}
+                          type={
+                            (item.episodes?.length || 0) > 1 ? 'tv' : 'movie'
+                          }
                         />
                       </div>
                     ))}
                 {searchResults.length === 0 && (
                   <div className='col-span-full text-center text-gray-500 py-8 dark:text-gray-400'>
-                    未找到相关结果
+                    {searchError ?? '未找到相关结果'}
                   </div>
                 )}
               </div>

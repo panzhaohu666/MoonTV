@@ -31,16 +31,15 @@ async function fetchDoubanData(url: string): Promise<DoubanApiResponse> {
   try {
     // 尝试直接访问豆瓣API
     const response = await fetch(url, fetchOptions);
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
 
-    return await response.json();
-  } catch (error) {
+    // 读 body 也必须在超时保护内
+    return (await response.json()) as DoubanApiResponse;
+  } finally {
     clearTimeout(timeoutId);
-    throw error;
   }
 }
 
@@ -70,14 +69,16 @@ export async function GET(request: Request) {
     );
   }
 
-  if (pageSize < 1 || pageSize > 100) {
+  // parseInt('abc') 得到 NaN，而 NaN 参与的大小比较恒为 false，
+  // 只写区间判断会把 NaN 放行，最终拼出 page_limit=NaN 的上游请求。
+  if (!Number.isFinite(pageSize) || pageSize < 1 || pageSize > 100) {
     return NextResponse.json(
       { error: 'pageSize 必须在 1-100 之间' },
       { status: 400 }
     );
   }
 
-  if (pageStart < 0) {
+  if (!Number.isFinite(pageStart) || pageStart < 0) {
     return NextResponse.json(
       { error: 'pageStart 不能小于 0' },
       { status: 400 }
@@ -88,7 +89,10 @@ export async function GET(request: Request) {
     return handleTop250(pageStart);
   }
 
-  const target = `https://movie.douban.com/j/search_subjects?type=${type}&tag=${tag}&sort=recommend&page_limit=${pageSize}&page_start=${pageStart}`;
+  // tag 是用户输入，直接拼进 URL 会被 & 注入额外参数，必须编码
+  const target = `https://movie.douban.com/j/search_subjects?type=${type}&tag=${encodeURIComponent(
+    tag
+  )}&sort=recommend&page_limit=${pageSize}&page_start=${pageStart}`;
 
   try {
     // 调用豆瓣 API
@@ -125,7 +129,7 @@ export async function GET(request: Request) {
   }
 }
 
-function handleTop250(pageStart: number) {
+async function handleTop250(pageStart: number) {
   const target = `https://movie.douban.com/top250?start=${pageStart}&filter=`;
 
   // 直接使用 fetch 获取 HTML 页面
@@ -143,64 +147,63 @@ function handleTop250(pageStart: number) {
     },
   };
 
-  return fetch(target, fetchOptions)
-    .then(async (fetchResponse) => {
-      clearTimeout(timeoutId);
+  try {
+    const fetchResponse = await fetch(target, fetchOptions);
 
-      if (!fetchResponse.ok) {
-        throw new Error(`HTTP error! Status: ${fetchResponse.status}`);
-      }
+    if (!fetchResponse.ok) {
+      throw new Error(`HTTP error! Status: ${fetchResponse.status}`);
+    }
 
-      // 获取 HTML 内容
-      const html = await fetchResponse.text();
+    // 获取 HTML 内容（读 body 也在超时保护内）
+    const html = await fetchResponse.text();
 
-      // 通过正则同时捕获影片 id、标题、封面以及评分
-      const moviePattern =
-        /<div class="item">[\s\S]*?<a[^>]+href="https?:\/\/movie\.douban\.com\/subject\/(\d+)\/"[\s\S]*?<img[^>]+alt="([^"]+)"[^>]*src="([^"]+)"[\s\S]*?<span class="rating_num"[^>]*>([^<]*)<\/span>[\s\S]*?<\/div>/g;
-      const movies: DoubanItem[] = [];
-      let match;
+    // 通过正则同时捕获影片 id、标题、封面以及评分
+    const moviePattern =
+      /<div class="item">[\s\S]*?<a[^>]+href="https?:\/\/movie\.douban\.com\/subject\/(\d+)\/"[\s\S]*?<img[^>]+alt="([^"]+)"[^>]*src="([^"]+)"[\s\S]*?<span class="rating_num"[^>]*>([^<]*)<\/span>[\s\S]*?<\/div>/g;
+    const movies: DoubanItem[] = [];
+    let match;
 
-      while ((match = moviePattern.exec(html)) !== null) {
-        const id = match[1];
-        const title = match[2];
-        const cover = match[3];
-        const rate = match[4] || '';
+    while ((match = moviePattern.exec(html)) !== null) {
+      const id = match[1];
+      const title = match[2];
+      const cover = match[3];
+      const rate = match[4] || '';
 
-        // 处理图片 URL，确保使用 HTTPS
-        const processedCover = cover.replace(/^http:/, 'https:');
+      // 处理图片 URL，确保使用 HTTPS
+      const processedCover = cover.replace(/^http:/, 'https:');
 
-        movies.push({
-          id: id,
-          title: title,
-          poster: processedCover,
-          rate: rate,
-          year: '',
-        });
-      }
-
-      const apiResponse: DoubanResult = {
-        code: 200,
-        message: '获取成功',
-        list: movies,
-      };
-
-      const cacheTime = await getCacheTime();
-      return NextResponse.json(apiResponse, {
-        headers: {
-          'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-          'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-          'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-        },
+      movies.push({
+        id: id,
+        title: title,
+        poster: processedCover,
+        rate: rate,
+        year: '',
       });
-    })
-    .catch((error) => {
-      clearTimeout(timeoutId);
-      return NextResponse.json(
-        {
-          error: '获取豆瓣 Top250 数据失败',
-          details: (error as Error).message,
-        },
-        { status: 500 }
-      );
+    }
+
+    const apiResponse: DoubanResult = {
+      code: 200,
+      message: '获取成功',
+      list: movies,
+    };
+
+    const cacheTime = await getCacheTime();
+    return NextResponse.json(apiResponse, {
+      headers: {
+        'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
+        'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+        'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+      },
     });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: '获取豆瓣 Top250 数据失败',
+        details: (error as Error).message,
+      },
+      { status: 500 }
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }

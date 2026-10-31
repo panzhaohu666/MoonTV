@@ -3,15 +3,31 @@
 import Hls from 'hls.js';
 
 /**
+ * 安全读取 localStorage 里的布尔开关。
+ * 这两个函数在渲染期被 processImageUrl 调用，一旦 JSON.parse 抛错整棵 React 树会卸载成白屏，
+ * 而存储里的值可能被旧版本/手动修改/配额截断写坏，所以必须兜住格式异常。
+ */
+function readBoolFlag(key: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const raw = localStorage.getItem(key);
+  if (raw === null) return false;
+  try {
+    return Boolean(JSON.parse(raw));
+  } catch {
+    // 兼容历史写入的裸字符串 'true' / 'false'
+    return raw === 'true';
+  }
+}
+
+/**
  * 获取图片代理 URL 设置
  */
 export function getImageProxyUrl(): string | null {
   if (typeof window === 'undefined') return null;
 
   // 本地未开启图片代理，则不使用代理
-  const enableImageProxy = localStorage.getItem('enableImageProxy');
-  if (enableImageProxy !== null) {
-    if (!JSON.parse(enableImageProxy) as boolean) {
+  if (localStorage.getItem('enableImageProxy') !== null) {
+    if (!readBoolFlag('enableImageProxy')) {
       return null;
     }
   }
@@ -70,9 +86,8 @@ export function getDoubanProxyUrl(): string | null {
   if (typeof window === 'undefined') return null;
 
   // 本地未开启豆瓣代理，则不使用代理
-  const enableDoubanProxy = localStorage.getItem('enableDoubanProxy');
-  if (enableDoubanProxy !== null) {
-    if (!JSON.parse(enableDoubanProxy) as boolean) {
+  if (localStorage.getItem('enableDoubanProxy') !== null) {
+    if (!readBoolFlag('enableDoubanProxy')) {
       return null;
     }
   }
@@ -198,6 +213,8 @@ export async function getVideoResolutionFromM3u8(m3u8Url: string): Promise<{
             });
           } else {
             // webkit 无法获取尺寸，直接返回
+            hls.destroy();
+            video.remove();
             resolve({
               quality: '未知',
               loadSpeed: actualLoadSpeed,

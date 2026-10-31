@@ -25,13 +25,26 @@ interface DoubanCategoryApiResponse {
   }>;
 }
 
+// j/search_subjects 的返回结构与 recent_hot 不同：字段名是 subjects，
+// 封面叫 cover、标题信息在 episodes_info，没有 pic/card_subtitle/rating.value。
+interface DoubanSearchSubjectsResponse {
+  subjects: Array<{
+    id: string;
+    title: string;
+    cover: string;
+    rate: string;
+    episodes_info: string;
+  }>;
+}
+
 /**
  * 带超时的 fetch 请求
+ * 超时覆盖到 body 读取完成，避免响应头已返回但 body 卡住时无限等待
  */
-async function fetchWithTimeout(
+async function fetchWithTimeout<T>(
   url: string,
-  options: RequestInit = {}
-): Promise<Response> {
+  read: (response: Response) => Promise<T>
+): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
 
@@ -40,24 +53,20 @@ async function fetchWithTimeout(
   const finalUrl = proxyUrl ? `${proxyUrl}${encodeURIComponent(url)}` : url;
 
   const fetchOptions: RequestInit = {
-    ...options,
     signal: controller.signal,
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
       Referer: 'https://movie.douban.com/',
       Accept: 'application/json, text/plain, */*',
-      ...options.headers,
     },
   };
 
   try {
     const response = await fetch(finalUrl, fetchOptions);
+    return await read(response);
+  } finally {
     clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    throw error;
   }
 }
 
@@ -96,13 +105,12 @@ export async function fetchDoubanCategories(
   const target = `https://m.douban.com/rexxar/api/v2/subject/recent_hot/${kind}?start=${pageStart}&limit=${pageLimit}&category=${category}&type=${type}`;
 
   try {
-    const response = await fetchWithTimeout(target);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-
-    const doubanData: DoubanCategoryApiResponse = await response.json();
+    const doubanData = await fetchWithTimeout(target, async (response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      return (await response.json()) as DoubanCategoryApiResponse;
+    });
 
     // 转换数据格式
     const list: DoubanItem[] = doubanData.items.map((item) => ({
@@ -305,21 +313,24 @@ export async function fetchDoubanList(
   const target = `https://movie.douban.com/j/search_subjects?type=${type}&tag=${tag}&sort=recommend&page_limit=${pageLimit}&page_start=${pageStart}`;
 
   try {
-    const response = await fetchWithTimeout(target);
+    const doubanData = await fetchWithTimeout(target, async (response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      return (await response.json()) as DoubanSearchSubjectsResponse;
+    });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
+    // 转换数据格式（j/search_subjects 用 subjects + cover + rate）
+    const subjects = doubanData.subjects;
+    if (!Array.isArray(subjects)) {
+      throw new Error('豆瓣返回结构异常');
     }
-
-    const doubanData: DoubanCategoryApiResponse = await response.json();
-
-    // 转换数据格式
-    const list: DoubanItem[] = doubanData.items.map((item) => ({
+    const list: DoubanItem[] = subjects.map((item) => ({
       id: item.id,
       title: item.title,
-      poster: item.pic?.normal || item.pic?.large || '',
-      rate: item.rating?.value ? item.rating.value.toFixed(1) : '',
-      year: item.card_subtitle?.match(/(\d{4})/)?.[1] || '',
+      poster: item.cover || '',
+      rate: item.rate || '',
+      year: item.episodes_info?.match(/(\d{4})/)?.[1] || '',
     }));
 
     return {

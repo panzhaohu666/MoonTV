@@ -26,6 +26,7 @@ function DoubanPageClient() {
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadingRef = useRef<HTMLDivElement>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const requestSeqRef = useRef(0);
 
   const type = searchParams.get('type') || 'movie';
 
@@ -151,6 +152,7 @@ function DoubanPageClient() {
 
   // 防抖的数据加载函数
   const loadInitialData = useCallback(async () => {
+    const seq = ++requestSeqRef.current;
     try {
       setLoading(true);
       let data: DoubanResult;
@@ -176,15 +178,28 @@ function DoubanPageClient() {
         data = await getDoubanBrowse(getExploreParams(0));
       }
 
+      if (seq !== requestSeqRef.current) {
+        return;
+      }
+
       if (data.code === 200) {
         setDoubanData(data.list);
-        setHasMore(data.list.length > 0);
-        setLoading(false);
+        setHasMore(data.list.length >= 25);
       } else {
         throw new Error(data.message || '获取数据失败');
       }
     } catch (err) {
+      if (seq !== requestSeqRef.current) {
+        return;
+      }
       console.error(err);
+      // 请求失败必须复位，否则页面会永久停在骨架屏
+      setDoubanData([]);
+      setHasMore(false);
+    } finally {
+      if (seq === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [
     type,
@@ -239,6 +254,7 @@ function DoubanPageClient() {
   // 单独处理 currentPage 变化（加载更多）
   useEffect(() => {
     if (currentPage > 0) {
+      const seq = requestSeqRef.current;
       const fetchMoreData = async () => {
         try {
           setIsLoadingMore(true);
@@ -266,16 +282,26 @@ function DoubanPageClient() {
             data = await getDoubanBrowse(getExploreParams(currentPage * 25));
           }
 
+          // 期间若筛选条件变了（新的初始加载已开始），丢弃这次翻页结果
+          if (seq !== requestSeqRef.current) {
+            return;
+          }
+
           if (data.code === 200) {
             setDoubanData((prev) => [...prev, ...data.list]);
-            setHasMore(data.list.length > 0);
+            setHasMore(data.list.length >= 25);
           } else {
             throw new Error(data.message || '获取数据失败');
           }
         } catch (err) {
+          if (seq !== requestSeqRef.current) {
+            return;
+          }
           console.error(err);
         } finally {
-          setIsLoadingMore(false);
+          if (seq === requestSeqRef.current) {
+            setIsLoadingMore(false);
+          }
         }
       };
 

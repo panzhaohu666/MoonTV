@@ -1,7 +1,10 @@
 /** @type {import('next').NextConfig} */
 /* eslint-disable @typescript-eslint/no-var-requires */
 const nextConfig = {
-  output: 'standalone',
+  // standalone 产物只给 Docker 镜像用（见 Dockerfile）。
+  // Cloudflare Pages 走 next-on-pages，产物是 .vercel/output/static，
+  // 不需要 standalone，而且它的文件复制在 Windows 上会撞杀软实时扫描（EBUSY）。
+  output: process.env.DOCKER_ENV === 'true' ? 'standalone' : undefined,
   eslint: {
     dirs: ['src'],
   },
